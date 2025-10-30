@@ -15,14 +15,19 @@
             <div class="mb-3">
               <label class="form-label">Action</label>
               <div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="action" id="actSingle" value="single" checked>
-                  <label class="form-check-label" for="actSingle">Train single model (GaussianNB)</label>
-                </div>
-                <div class="form-check form-check-inline">
-                  <input class="form-check-input" type="radio" name="action" id="actSelect" value="selection">
-                  <label class="form-check-label" for="actSelect">Run model selection (multiple)</label>
-                </div>
+                {% if pretrained_models and pretrained_models|length > 0 %}
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="mode" id="modePretrained" value="pretrained" checked>
+                    <label class="form-check-label" for="modePretrained">Use pretrained model (fast)</label>
+                  </div>
+                  <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="radio" name="mode" id="modeSelect" value="selection">
+                    <label class="form-check-label" for="modeSelect">Run model selection (train multiple) — slow</label>
+                  </div>
+                {% else %}
+                  <p class="mb-0">No pretrained models found in <code>outputs/models/</code>. The UI will run model selection (train multiple models).</p>
+                  <input type="hidden" name="mode" value="selection">
+                {% endif %}
               </div>
             </div>
 
@@ -30,6 +35,25 @@
               <input class="form-check-input" type="checkbox" name="save_best" id="saveBest" value="1">
               <label class="form-check-label" for="saveBest">Save best model after run</label>
             </div>
+
+            {% if pretrained_models and pretrained_models|length > 0 %}
+            <div id="pretrainedControls">
+              <div class="mb-3">
+                <label class="form-label">Pretrained model (optional)- Choose for 1st action only. </label>
+                <select class="form-select" name="pretrained_name" id="pretrainedName">
+                  <option value="">-- Auto select latest --</option>
+                  {% for m in pretrained_models %}
+                    <option value="{{ m }}">{{ m }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="mb-3 form-check">
+                <input class="form-check-input" type="checkbox" name="overwrite_if_improved" id="overwriteIfImproved" value="1">
+                <label class="form-check-label" for="overwriteIfImproved">If training yields higher accuracy, overwrite the selected pretrained model</label>
+              </div>
+            </div>
+            {% endif %}
 
             <div class="mb-3">
               <label class="form-label">Save directory (relative to package)</label>
@@ -63,3 +87,24 @@
     </div>
   </div>
 {% endblock %}
+
+{% if pretrained_models and pretrained_models|length > 0 %}
+<script>
+  // toggle pretrained controls based on selected mode
+  function togglePretrainedControls() {
+    const pre = document.getElementById('pretrainedControls');
+    const sel = document.getElementById('modeSelect');
+    if (!pre || !sel) return;
+    if (sel.checked) {
+      pre.style.display = 'none';
+    } else {
+      pre.style.display = '';
+    }
+  }
+  document.addEventListener('DOMContentLoaded', function() {
+    const radios = document.getElementsByName('mode');
+    radios.forEach(r => r.addEventListener('change', togglePretrainedControls));
+    togglePretrainedControls();
+  });
+</script>
+{% endif %}

@@ -26,11 +26,20 @@ OUTPUT_DIR = os.path.join(BASE_DIR, 'outputs')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+# directory for pretrained models
+MODEL_DIR = os.path.join(BASE_DIR, 'outputs', 'models')
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+# default production behavior: prefer pretrained models (set to '1' to enable)
+USE_PRETRAINED_DEFAULT = os.environ.get('USE_PRETRAINED', '1') == '1'
+
 
 @app.route('/')
 def index():
     """Show upload form and action choices."""
-    return render_template('index.html')
+    # pass available pretrained models to the template
+    models = find_pretrained_models()
+    return render_template('index.html', pretrained_models=models)
 
 
 def save_uploaded_file(f):
@@ -40,6 +49,46 @@ def save_uploaded_file(f):
     return dest
 
 
+def find_pretrained_models():
+    """Return a sorted list of model filenames available in MODEL_DIR."""
+    try:
+        entries = []
+        # Only consider files inside the outputs/models directory
+        if os.path.isdir(MODEL_DIR):
+            for f in os.listdir(MODEL_DIR):
+                full = os.path.join(MODEL_DIR, f)
+                if os.path.isfile(full) and f.lower().endswith(('.joblib', '.pkl', '.bin', '.model')):
+                    entries.append(f)
+
+        # sort deterministically (reverse alphabetical can put newer timestamped names first)
+        items = sorted(entries, reverse=True)
+        return items
+    except Exception:
+        return []
+
+
+def load_pretrained_model(path):
+    """Load a pretrained model. Try joblib first, then attempt CatBoost native load as fallback."""
+    import joblib
+    from pathlib import Path
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(str(p))
+    # try joblib
+    try:
+        return joblib.load(str(p))
+    except Exception:
+        # try CatBoost
+        try:
+            from catboost import CatBoostClassifier
+            m = CatBoostClassifier()
+            m.load_model(str(p))
+            return m
+        except Exception:
+            # as last resort, raise
+            raise
+
+
 @app.route('/run', methods=['POST'])
 def run():
     try:
@@ -47,6 +96,14 @@ def run():
         action = request.form.get('action')  # 'single' or 'selection'
         save_best = bool(request.form.get('save_best'))
         save_dir = request.form.get('save_dir') or 'outputs/models'
+        # determine mode: 'pretrained' or 'selection'
+        mode = request.form.get('mode')
+        pretrained_name = request.form.get('pretrained_name') or ''
+        if mode is None:
+            # default behavior: prefer pretrained if available
+            mode = 'pretrained' if (USE_PRETRAINED_DEFAULT and len(find_pretrained_models()) > 0) else 'selection'
+        use_pretrained = (mode == 'pretrained')
+        overwrite_if_improved = bool(request.form.get('overwrite_if_improved'))
 
         # dataset: either uploaded or use repo's default dr_dataset.csv
         uploaded = request.files.get('dataset')
@@ -67,26 +124,53 @@ def run():
         X, y = split_X_y(df_proc)
         X_res, y_res = apply_smote(X, y)
         X_train, X_test, y_train, y_test = train_test_split_stratified(X_res, y_res)
+        # If user requested to use a pretrained model, attempt to load and evaluate it
+        if use_pretrained:
+            # determine pretrained model path: explicit selection or latest in MODEL_DIR
+            selected = None
+            if pretrained_name:
+                cand = os.path.join(MODEL_DIR, pretrained_name)
+                if os.path.exists(cand):
+                    selected = cand
+                else:
+                    cand2 = os.path.join(BASE_DIR, pretrained_name)
+                    if os.path.exists(cand2):
+                        selected = cand2
+            else:
+                # pick latest file from MODEL_DIR
+                models = find_pretrained_models()
+                if models:
+                    selected = os.path.join(MODEL_DIR, models[0])
 
-        if action == 'single':
-            # train GaussianNB as in original flow
-            from drtb.model import train_gaussian_nb, save_model
-            model = train_gaussian_nb(X_train, y_train)
-            accuracy = float(model.score(X_test, y_test))
-            y_pred = model.predict(X_test)
+            if not selected:
+                return render_template('result.html', error='No pretrained model found. Uncheck "Use pretrained" to run model selection.')
 
-            # generate and save plots (confusion matrix, ROC, PR) when possible
+            try:
+                model = load_pretrained_model(selected)
+            except Exception as e:
+                return render_template('result.html', error=f'Failed to load pretrained model: {e}')
+
+            # evaluate
+            try:
+                accuracy = float(model.score(X_test, y_test))
+            except Exception:
+                accuracy = None
+            try:
+                y_pred = model.predict(X_test)
+            except Exception:
+                y_pred = None
+
+            # create plots
+            cm_fname = roc_fname = pr_fname = feat_fname = None
             try:
                 from sklearn.metrics import confusion_matrix
                 from drtb.metrics import print_confusion_matrix, plot_roc, plot_precision_recall, convert_binary_category_to_string
-
-                cm = confusion_matrix(y_test, y_pred)
-                class_names = convert_binary_category_to_string(sorted(list(set(y_test))))
-                fig_cm = print_confusion_matrix(cm, class_names)
-                cm_fname = f"confusion_single_{int(np.random.uniform(0,1)*1e9)}.png"
-                cm_path = os.path.join(OUTPUT_DIR, cm_fname)
-                fig_cm.savefig(cm_path, bbox_inches='tight')
-                plt.close(fig_cm)
+                if y_pred is not None:
+                    cm = confusion_matrix(y_test, y_pred)
+                    fig_cm = print_confusion_matrix(cm, convert_binary_category_to_string(sorted(list(set(y_test)))))
+                    cm_fname = f"confusion_pretrained_{int(np.random.uniform(0,1)*1e9)}.png"
+                    fig_cm.savefig(os.path.join(OUTPUT_DIR, cm_fname), bbox_inches='tight')
+                    plt.close(fig_cm)
 
                 probs = None
                 if hasattr(model, 'predict_proba'):
@@ -97,31 +181,41 @@ def run():
                     except Exception:
                         probs = None
 
-                roc_fname = pr_fname = None
                 if probs is not None:
                     fig_roc, _ = plot_roc(y_test, probs)
-                    roc_fname = f"roc_single_{int(np.random.uniform(0,1)*1e9)}.png"
+                    roc_fname = f"roc_pretrained_{int(np.random.uniform(0,1)*1e9)}.png"
                     fig_roc.savefig(os.path.join(OUTPUT_DIR, roc_fname), bbox_inches='tight')
                     plt.close(fig_roc)
 
                     fig_pr, _ = plot_precision_recall(y_test, probs)
-                    pr_fname = f"pr_single_{int(np.random.uniform(0,1)*1e9)}.png"
+                    pr_fname = f"pr_pretrained_{int(np.random.uniform(0,1)*1e9)}.png"
                     fig_pr.savefig(os.path.join(OUTPUT_DIR, pr_fname), bbox_inches='tight')
                     plt.close(fig_pr)
-                else:
-                    roc_fname = pr_fname = None
+
+                # feature importances
+                try:
+                    importances = None
+                    if hasattr(model, 'feature_importances_'):
+                        importances = model.feature_importances_
+                    elif hasattr(model, 'coef_'):
+                        importances = np.abs(np.ravel(model.coef_))
+                    if importances is not None and len(importances) == X_train.shape[1]:
+                        feat_names = getattr(X_train, 'columns', [f'feat_{i}' for i in range(X_train.shape[1])])
+                        fig_f = plt.figure(figsize=(8, 4))
+                        idx = np.argsort(importances)[::-1][:20]
+                        plt.barh(range(len(idx)), importances[idx][::-1], color='#0b5ed7')
+                        plt.yticks(range(len(idx)), [feat_names[i] for i in idx][::-1])
+                        plt.title('Top feature importances')
+                        feat_fname = f"feat_imp_pretrained_{int(np.random.uniform(0,1)*1e9)}.png"
+                        fig_f.savefig(os.path.join(OUTPUT_DIR, feat_fname), bbox_inches='tight')
+                        plt.close(fig_f)
+                except Exception:
+                    feat_fname = None
             except Exception:
-                cm_fname = roc_fname = pr_fname = None
+                pass
 
-            # optionally save
-            saved_path = None
-            if save_best:
-                save_folder = os.path.join(BASE_DIR, save_dir)
-                os.makedirs(save_folder, exist_ok=True)
-                fname = os.path.join(save_folder, 'gaussian_nb_model.joblib')
-                saved_path = save_model(model, fname)
-
-            return render_template('result.html', single=True, accuracy=accuracy, y_test=y_test.tolist(), y_pred=y_pred.tolist(), saved_path=saved_path)
+            images = {'confusion': cm_fname, 'roc': roc_fname, 'pr': pr_fname, 'feat_imp': feat_fname}
+            return render_template('result.html', single=False, best_name=os.path.basename(selected), report=[(os.path.basename(selected), accuracy if accuracy is not None else 0.0)], saved_path=selected, images=images)
 
         else:
             # model selection
@@ -199,7 +293,51 @@ def run():
             best_name, best_model, report = train_and_select_best(X_train, y_train, X_test, y_test, models, params)
 
             saved_path = None
-            if save_best:
+            # compute accuracy for best model on test set
+            try:
+                best_acc = float(best_model.score(X_test, y_test))
+            except Exception:
+                best_acc = None
+
+            # find existing pretrained model path to compare/overwrite
+            existing_model_path = None
+            if pretrained_name:
+                candidate = os.path.join(MODEL_DIR, pretrained_name)
+                if os.path.exists(candidate):
+                    existing_model_path = candidate
+                else:
+                    candidate2 = os.path.join(BASE_DIR, pretrained_name)
+                    if os.path.exists(candidate2):
+                        existing_model_path = candidate2
+            else:
+                # try to find a file that matches the best_name in MODEL_DIR
+                try:
+                    for f in os.listdir(MODEL_DIR):
+                        if best_name.lower() in f.lower():
+                            existing_model_path = os.path.join(MODEL_DIR, f)
+                            break
+                except Exception:
+                    existing_model_path = None
+
+            # compute existing accuracy if possible
+            existing_acc = None
+            if existing_model_path:
+                try:
+                    existing_model = load_pretrained_model(existing_model_path)
+                    existing_acc = float(existing_model.score(X_test, y_test))
+                except Exception:
+                    existing_acc = None
+
+            # If overwrite_if_improved is requested and the new model is better, overwrite existing
+            if overwrite_if_improved and existing_model_path is not None and best_acc is not None:
+                try:
+                    if existing_acc is None or (best_acc > existing_acc):
+                        saved_path = save_model(best_model, existing_model_path)
+                except Exception:
+                    saved_path = None
+
+            # if user explicitly requested save_best (non-overwrite), save to chosen folder
+            if save_best and saved_path is None:
                 save_folder = os.path.join(BASE_DIR, save_dir)
                 os.makedirs(save_folder, exist_ok=True)
                 fname = os.path.join(save_folder, f"{best_name}_model.joblib")

@@ -25,10 +25,13 @@ RUN pip install --upgrade pip setuptools wheel && \
     pip install --no-cache-dir gunicorn
 
 # Copy the rest of the application
+# Copy the rest of the application
+# Also copy any pretrained models placed under drug_resistant_tuberculosis/models into the image
 COPY . /app
+COPY drug_resistant_tuberculosis/models /app/drug_resistant_tuberculosis/models
 
 # Create output directories expected by the app
-RUN mkdir -p /app/drug_resistant_tuberculosis/outputs /app/drug_resistant_tuberculosis/uploads
+RUN mkdir -p /app/drug_resistant_tuberculosis/outputs /app/drug_resistant_tuberculosis/uploads /app/drug_resistant_tuberculosis/models
 
 EXPOSE 8502
 
