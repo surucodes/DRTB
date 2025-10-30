@@ -30,6 +30,11 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 MODEL_DIR = os.path.join(BASE_DIR, 'outputs', 'models')
 os.makedirs(MODEL_DIR, exist_ok=True)
 
+# Ensure the package directory is on sys.path so 'import drtb' works when running inside Docker
+import sys
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
 # default production behavior: prefer pretrained models (set to '1' to enable)
 USE_PRETRAINED_DEFAULT = os.environ.get('USE_PRETRAINED', '1') == '1'
 

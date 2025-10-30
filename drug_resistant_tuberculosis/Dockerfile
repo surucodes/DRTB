@@ -37,9 +37,12 @@ RUN mkdir -p /app/drug_resistant_tuberculosis/outputs /app/drug_resistant_tuberc
 
 EXPOSE 8502
 
-# Use gunicorn to serve the Flask app. Module: package.application:app
-"""
-Use a shell wrapper so environment variable expansion works for ${PORT} at container start.
-We keep the JSON exec form but run a shell to allow ${PORT:-8502} substitution.
-"""
-CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8502} drug_resistant_tuberculosis.application:app --workers 1 --threads 4"]
+# Copy an entrypoint script that handles PORT expansion and execs the process
+COPY drug_resistant_tuberculosis/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Use entrypoint for robust startup and signal handling
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
+# Default command (entrypoint will run this if no args provided)
+CMD ["gunicorn", "--bind", "0.0.0.0:8502", "drug_resistant_tuberculosis.application:app", "--workers", "1", "--threads", "4"]
