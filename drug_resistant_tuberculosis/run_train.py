@@ -16,7 +16,23 @@ logger = get_logger(__name__)
 
 def main():
     base_dir = os.path.dirname(__file__)
-    csv_path = os.path.join(base_dir, "dr_dataset.csv")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input', '-i', help="Path to input CSV. If not provided, prefers 'de_dataset.csv' then falls back to 'dr_dataset.csv' in the project folder.")
+    args = parser.parse_args()
+
+    # Prefer the older dataset 'de_dataset.csv' if present per user's request;
+    # otherwise fall back to the repository's 'dr_dataset.csv'. Allow CLI override.
+    default_de = os.path.join(base_dir, 'de_dataset.csv')
+    default_dr = os.path.join(base_dir, 'dr_dataset.csv')
+    if args.input:
+        csv_path = args.input
+    elif os.path.exists(default_de):
+        csv_path = default_de
+    else:
+        csv_path = default_dr
+
     print(f"Loading data from: {csv_path}")
     df = load_data(csv_path)
     df_proc = preprocess_pipeline(df)
@@ -28,6 +44,7 @@ def main():
         # candidate classifiers
         from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
         from sklearn.tree import DecisionTreeClassifier
+        from sklearn.ensemble import VotingClassifier
         from sklearn.neighbors import KNeighborsClassifier
         from sklearn.linear_model import LogisticRegression
         from xgboost import XGBClassifier
@@ -81,6 +98,49 @@ def main():
             pass
         if has_catboost:
             models["CatBoost"] = CatBoostClassifier(verbose=False)
+
+        # --- New ensemble models requested by user ---
+        # Ensemble 1: RandomForest + GradientBoosting + DecisionTree (soft voting)
+        try:
+            v1_estimators = [
+                ("rf", RandomForestClassifier(n_estimators=100, random_state=42)),
+                ("gb", GradientBoostingClassifier(n_estimators=100)),
+                ("dt", DecisionTreeClassifier())
+            ]
+            ensemble1 = VotingClassifier(estimators=v1_estimators, voting='soft', n_jobs=-1)
+            models["Ensemble_RF_GB_DT"] = ensemble1
+        except Exception:
+            pass
+
+        # Ensemble 2: XGBoost + (existing StackingEnsemble if available) + CatBoost
+        try:
+            v2_estimators = []
+            # XGBoost
+            try:
+                xgb_est = XGBClassifier(use_label_encoder=False, eval_metric='logloss', n_estimators=50)
+                v2_estimators.append(("xgb", xgb_est))
+            except Exception:
+                pass
+
+            # include stacking if it was successfully created above
+            if 'stacking' in locals():
+                try:
+                    v2_estimators.append(("stacking", stacking))
+                except Exception:
+                    pass
+            # CatBoost if available
+            if has_catboost:
+                try:
+                    cat_est = CatBoostClassifier(verbose=False, random_state=42)
+                    v2_estimators.append(("cat", cat_est))
+                except Exception:
+                    pass
+
+            if v2_estimators:
+                ensemble2 = VotingClassifier(estimators=v2_estimators, voting='soft', n_jobs=-1)
+                models["Ensemble_XGB_Stack_Cat"] = ensemble2
+        except Exception:
+            pass
 
         # small hyperparameter grids to try (kept small for speed)
         params = {
