@@ -11,7 +11,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     cmake \
     libomp-dev \
-    default-libgomp-dev \
     libboost-all-dev \
     && rm -rf /var/lib/apt/lists/*
 
@@ -28,7 +27,10 @@ RUN pip install --upgrade pip setuptools wheel && \
 # Copy the rest of the application
 # Also copy any pretrained models placed under drug_resistant_tuberculosis/models into the image
 COPY . /app
-COPY drug_resistant_tuberculosis/models /app/drug_resistant_tuberculosis/models
+
+# If there are pretrained models saved under outputs/models include them in the image so the app can
+# prefer pretrained models at runtime. The .dockerignore file must allow the path.
+COPY drug_resistant_tuberculosis/outputs/models /app/drug_resistant_tuberculosis/outputs/models
 
 # Create output directories expected by the app
 RUN mkdir -p /app/drug_resistant_tuberculosis/outputs /app/drug_resistant_tuberculosis/uploads /app/drug_resistant_tuberculosis/models
@@ -36,4 +38,8 @@ RUN mkdir -p /app/drug_resistant_tuberculosis/outputs /app/drug_resistant_tuberc
 EXPOSE 8502
 
 # Use gunicorn to serve the Flask app. Module: package.application:app
-CMD gunicorn --bind 0.0.0.0:${PORT:-8502} drug_resistant_tuberculosis.application:app --workers 1 --threads 4
+"""
+Use a shell wrapper so environment variable expansion works for ${PORT} at container start.
+We keep the JSON exec form but run a shell to allow ${PORT:-8502} substitution.
+"""
+CMD ["sh", "-c", "gunicorn --bind 0.0.0.0:${PORT:-8502} drug_resistant_tuberculosis.application:app --workers 1 --threads 4"]

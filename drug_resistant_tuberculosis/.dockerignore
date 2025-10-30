@@ -6,6 +6,8 @@ venv/
 .env
 .env.local
 outputs/
+!drug_resistant_tuberculosis/outputs/models
+!drug_resistant_tuberculosis/outputs/models/**
 uploads/
 .ipynb_checkpoints/
 .git
