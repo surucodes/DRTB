@@ -39,6 +39,8 @@ def main():
 
         from sklearn.ensemble import HistGradientBoostingClassifier
 
+        from sklearn.ensemble import StackingClassifier
+
         models = {
             "RandomForest": RandomForestClassifier(n_jobs=-1),
             "GradientBoosting": GradientBoostingClassifier(),
@@ -49,6 +51,22 @@ def main():
             "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
             "HistGradientBoosting": HistGradientBoostingClassifier()
         }
+        # Add a stacking ensemble of top candidate models (no hyperparameter tuning here)
+        try:
+            estimators = [
+                ("rf", RandomForestClassifier(n_estimators=50, random_state=42)),
+                ("xgb", XGBClassifier(use_label_encoder=False, eval_metric='logloss', n_estimators=50))
+            ]
+            try:
+                from catboost import CatBoostClassifier
+                estimators.append(("cat", CatBoostClassifier(verbose=False, random_state=42)))
+            except Exception:
+                pass
+            stacking = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression(), n_jobs=-1)
+            models["StackingEnsemble"] = stacking
+        except Exception:
+            # if stacking cannot be constructed, continue without it
+            pass
         if has_catboost:
             models["CatBoost"] = CatBoostClassifier(verbose=False)
 

@@ -134,6 +134,22 @@ def run():
                     "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
                     "HistGradientBoosting": __import__('sklearn').ensemble.HistGradientBoostingClassifier()
                 }
+                # Add stacking ensemble
+                try:
+                    from sklearn.ensemble import StackingClassifier
+                    estimators = [
+                        ("rf", RandomForestClassifier(n_estimators=50, random_state=42)),
+                        ("xgb", XGBClassifier(use_label_encoder=False, eval_metric='logloss', n_estimators=50))
+                    ]
+                    try:
+                        from catboost import CatBoostClassifier
+                        estimators.append(("cat", CatBoostClassifier(verbose=False, random_state=42)))
+                    except Exception:
+                        pass
+                    stacking = StackingClassifier(estimators=estimators, final_estimator=LogisticRegression(), n_jobs=-1)
+                    models["StackingEnsemble"] = stacking
+                except Exception:
+                    pass
                 if has_catboost:
                     models["CatBoost"] = CatBoostClassifier(verbose=False)
 
@@ -154,12 +170,122 @@ def run():
 
                 from drtb.model import train_and_select_best
                 best_name, best_model, report = train_and_select_best(X_train, y_train, X_test, y_test, models, params)
-
             st.success(f"Model selection finished — best: {best_name} (accuracy={report[best_name]:.4f})")
             st.subheader("All model accuracies")
             st.write(report)
-            st.subheader("Best model details")
-            st.write(str(best_model))
+
+            # Detailed visualizations and metrics for the best model
+            st.subheader("Detailed results for best model")
+            # predict on X_test
+            try:
+                # Ensure X_test is available in local scope
+                from drtb.preprocess import split_X_y
+                # Use X_test, y_test from outer scope
+                y_pred = best_model.predict(X_test)
+            except Exception:
+                st.warning("Could not compute predictions for best model")
+                y_pred = None
+
+            from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, precision_recall_fscore_support
+            import pandas as pd
+            import numpy as np
+
+            if y_pred is not None:
+                acc = accuracy_score(y_test, y_pred)
+                st.write(f"Accuracy: {acc:.4f}")
+
+                # confusion matrix
+                cm = confusion_matrix(y_test, y_pred)
+                st.subheader("Confusion Matrix")
+                from drtb.metrics import print_confusion_matrix
+                fig_cm = print_confusion_matrix(cm, ["Drug Resistant TB (DR)", "Drug Sensitive TB (DS)"])
+                st.pyplot(fig_cm)
+
+                # classification report
+                st.subheader("Classification Report")
+                cls_rep = classification_report(y_test, y_pred, target_names=["DS","DR"], output_dict=True)
+                cls_df = pd.DataFrame(cls_rep).transpose()
+                st.dataframe(cls_df.round(4))
+
+                # ROC and PR curves if possible
+                from drtb.metrics import plot_roc, plot_precision_recall
+                probs = None
+                if hasattr(best_model, 'predict_proba'):
+                    probs_all = best_model.predict_proba(X_test)
+                    # assume positive class is 1
+                    if probs_all.shape[1] == 2:
+                        probs = probs_all[:, 1]
+                elif hasattr(best_model, 'decision_function'):
+                    try:
+                        probs = best_model.decision_function(X_test)
+                    except Exception:
+                        probs = None
+
+                if probs is not None:
+                    st.subheader("ROC Curve")
+                    fig_roc, roc_auc = plot_roc(y_test, probs)
+                    st.pyplot(fig_roc)
+                    st.write(f"AUC: {roc_auc:.4f}")
+
+                    st.subheader("Precision-Recall Curve")
+                    fig_pr, avg_prec = plot_precision_recall(y_test, probs)
+                    st.pyplot(fig_pr)
+                    st.write(f"Average precision (AP): {avg_prec:.4f}")
+                else:
+                    st.info("Probability scores not available for this model — ROC/PR not shown.")
+
+                # Feature importances (if available)
+                st.subheader("Feature importances / coefficients")
+                try:
+                    # get feature names from df_proc
+                    feature_names = list(df_proc.drop('Class', axis=1).columns)
+                except Exception:
+                    feature_names = None
+
+                import matplotlib.pyplot as plt
+                if hasattr(best_model, 'feature_importances_') and feature_names is not None:
+                    import numpy as _np
+                    fi = best_model.feature_importances_
+                    idx = _np.argsort(fi)[::-1][:20]
+                    fig = plt.figure(figsize=(8, 6))
+                    plt.barh([feature_names[i] for i in idx[::-1]], fi[idx[::-1]])
+                    plt.title('Top feature importances')
+                    st.pyplot(fig)
+                elif hasattr(best_model, 'coef_') and feature_names is not None:
+                    coef = best_model.coef_
+                    # handle multiclass vs binary
+                    if coef.ndim == 1:
+                        vals = coef
+                    else:
+                        vals = coef[0]
+                    idx = np.argsort(np.abs(vals))[::-1][:20]
+                    fig = plt.figure(figsize=(8, 6))
+                    plt.barh([feature_names[i] for i in idx[::-1]], vals[idx[::-1]])
+                    plt.title('Top coefficients (by magnitude)')
+                    st.pyplot(fig)
+                else:
+                    st.info('No feature importances or coefficients available for this model.')
+
+                # Cross-validation scores for the best model
+                st.subheader('Cross-validation (5-fold) scores for best model')
+                from sklearn.model_selection import cross_val_score
+                try:
+                    # convert to numpy arrays to avoid library issues (e.g., xgboost expecting no special feature names)
+                    if hasattr(X_res, 'to_numpy'):
+                        X_res_cv = X_res.to_numpy()
+                    else:
+                        X_res_cv = X_res
+                    if hasattr(y_res, 'to_numpy'):
+                        y_res_cv = y_res.to_numpy()
+                    else:
+                        y_res_cv = y_res
+
+                    cv_scores = cross_val_score(best_model, X_res_cv, y_res_cv, cv=5, scoring='accuracy', n_jobs=-1)
+                    st.write('CV accuracy mean: ', float(np.mean(cv_scores)))
+                    st.write('CV accuracies: ', [float(x) for x in cv_scores])
+                except Exception as e:
+                    st.info(f'Could not compute cross-validation scores: {e}')
+
             if save_model_opt:
                 from drtb.model import save_model
                 save_model(best_model, model_path)

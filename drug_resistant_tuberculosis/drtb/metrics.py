@@ -24,6 +24,7 @@ def convert_binary_category_to_string(category_iterable):
 def plot_roc(truth, prediction):
     fpr, tpr, _ = roc_curve(truth, prediction)
     roc_auc = auc(fpr, tpr)
+    fig = plt.figure()
     plt.plot(fpr, tpr, label='ROC curve (area = %0.2f)' % roc_auc)
     plt.plot([0, 1], [0, 1], 'k--')
     plt.xlim([0.0, 1.0])
@@ -32,4 +33,22 @@ def plot_roc(truth, prediction):
     plt.ylabel('True Positive Rate or (Sensitivity)')
     plt.title('Receiver Operating Characteristic')
     plt.legend(loc="lower right")
-    return roc_auc
+    return fig, roc_auc
+
+
+def plot_precision_recall(truth, probs):
+    """Plot precision-recall curve and return (fig, average_precision).
+
+    `probs` should be predicted probabilities for the positive class.
+    """
+    from sklearn.metrics import precision_recall_curve, average_precision_score
+
+    precision, recall, _ = precision_recall_curve(truth, probs)
+    avg_prec = average_precision_score(truth, probs)
+    fig = plt.figure()
+    plt.plot(recall, precision, label='PR curve (AP = %0.2f)' % avg_prec)
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    plt.title('Precision-Recall Curve')
+    plt.legend(loc='lower left')
+    return fig, avg_prec
