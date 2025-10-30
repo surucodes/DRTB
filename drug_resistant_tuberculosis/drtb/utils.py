@@ -1,0 +1,60 @@
+"""Utility helpers: persistence and model evaluation."""
+from typing import Dict, Any, Tuple
+import joblib
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import accuracy_score
+from .logger import get_logger
+from .exceptions import CustomException
+import sys
+
+logger = get_logger(__name__)
+
+
+def save_object(file_path: str, obj: Any) -> None:
+    try:
+        joblib.dump(obj, file_path)
+        logger.info(f"Saved object to {file_path}")
+    except Exception as e:
+        logger.exception("Failed to save object")
+        raise CustomException(e, sys)
+
+
+def load_object(file_path: str) -> Any:
+    try:
+        return joblib.load(file_path)
+    except Exception as e:
+        logger.exception("Failed to load object")
+        raise CustomException(e, sys)
+
+
+def evaluate_models(X_train, y_train, X_test, y_test, models: Dict[str, Any], params: Dict[str, dict] = None) -> Tuple[Dict[str, float], Dict[str, Any]]:
+    """Train multiple candidate models and return accuracy report and fitted estimators.
+
+    If params contains a parameter grid for a model name, GridSearchCV will be used.
+    """
+    report = {}
+    fitted_models = {}
+    params = params or {}
+
+    for name, model in models.items():
+        try:
+            logger.info(f"Training model: {name}")
+            if name in params and params[name]:
+                grid = GridSearchCV(model, params[name], cv=3, n_jobs=-1, scoring='accuracy')
+                grid.fit(X_train, y_train)
+                best = grid.best_estimator_
+                logger.info(f"Best params for {name}: {grid.best_params_}")
+            else:
+                best = model
+                best.fit(X_train, y_train)
+
+            preds = best.predict(X_test)
+            acc = accuracy_score(y_test, preds)
+            report[name] = acc
+            fitted_models[name] = best
+            logger.info(f"Model {name} test accuracy: {acc:.4f}")
+        except Exception as e:
+            logger.exception(f"Failed training/eval for model {name}")
+            report[name] = 0.0
+            fitted_models[name] = None
+    return report, fitted_models

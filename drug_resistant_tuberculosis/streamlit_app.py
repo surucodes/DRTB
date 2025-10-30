@@ -83,26 +83,86 @@ def run():
         st.write(df.dtypes)
 
     st.subheader("Preprocessing & Training")
-    if st.button("Run preprocessing + train + evaluate"):
-        with st.spinner("Training model — this may take a few seconds"):
-            results = _train_and_evaluate(df, save_model_path=model_path if save_model_opt else None)
+    mode = st.radio("Action", ["Train & Evaluate (single)", "Model selection (compare multiple)"], index=0)
 
-        st.success(f"Training finished — test accuracy: {results['accuracy']:.4f}")
-        st.subheader("Classification report")
-        st.text(results['classification_report'])
+    if mode == "Train & Evaluate (single)":
+        if st.button("Run preprocessing + train + evaluate"):
+            with st.spinner("Training model — this may take a few seconds"):
+                results = _train_and_evaluate(df, save_model_path=model_path if save_model_opt else None)
 
-        st.subheader("Confusion Matrix")
-        fig_cm = print_confusion_matrix(results['confusion_matrix'], ["Drug Resistant TB (DR)", "Drug Sensitive TB (DS)"])
-        st.pyplot(fig_cm)
+            st.success(f"Training finished — test accuracy: {results['accuracy']:.4f}")
+            st.subheader("Classification report")
+            st.text(results['classification_report'])
 
-        st.subheader("ROC Curve")
-        # plot_roc draws directly into pyplot; call it and capture the auc
-        auc_val = plot_roc(results['y_test'], results['y_pred'])
-        st.write(f"AUC: {auc_val:.3f}")
-        st.pyplot()
+            st.subheader("Confusion Matrix")
+            fig_cm = print_confusion_matrix(results['confusion_matrix'], ["Drug Resistant TB (DR)", "Drug Sensitive TB (DS)"])
+            st.pyplot(fig_cm)
 
-        if save_model_opt:
-            st.write(f"Model saved to `{model_path}`")
+            st.subheader("ROC Curve")
+            # plot_roc draws directly into pyplot; call it and capture the auc
+            auc_val = plot_roc(results['y_test'], results['y_pred'])
+            st.write(f"AUC: {auc_val:.3f}")
+            st.pyplot()
+
+            if save_model_opt:
+                st.write(f"Model saved to `{model_path}`")
+
+    else:
+        st.write("This will train and compare multiple candidate classifiers and show their test accuracy.")
+        run_selection = st.button("Run model selection")
+        if run_selection:
+            with st.spinner("Running model selection — may take longer depending on models"):
+                # replicate the same candidate models and params as the CLI runner
+                from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
+                from sklearn.tree import DecisionTreeClassifier
+                from sklearn.neighbors import KNeighborsClassifier
+                from sklearn.linear_model import LogisticRegression
+                from xgboost import XGBClassifier
+                try:
+                    from catboost import CatBoostClassifier
+                    has_catboost = True
+                except Exception:
+                    has_catboost = False
+
+                models = {
+                    "RandomForest": RandomForestClassifier(n_jobs=-1),
+                    "GradientBoosting": GradientBoostingClassifier(),
+                    "AdaBoost": AdaBoostClassifier(),
+                    "DecisionTree": DecisionTreeClassifier(),
+                    "KNeighbors": KNeighborsClassifier(),
+                    "LogisticRegression": LogisticRegression(max_iter=1000),
+                    "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+                }
+                if has_catboost:
+                    models["CatBoost"] = CatBoostClassifier(verbose=False)
+
+                params = {
+                    "RandomForest": {"n_estimators": [50, 100], "max_depth": [None, 10]},
+                    "GradientBoosting": {"n_estimators": [50], "learning_rate": [0.1]},
+                    "XGBoost": {"n_estimators": [50], "learning_rate": [0.1]},
+                    "KNeighbors": {"n_neighbors": [3, 5]}
+                }
+
+                # preprocessing pipeline reuse
+                from drtb.preprocess import preprocess_pipeline, split_X_y, apply_smote, train_test_split_stratified
+
+                df_proc = preprocess_pipeline(df)
+                X, y = split_X_y(df_proc)
+                X_res, y_res = apply_smote(X, y)
+                X_train, X_test, y_train, y_test = train_test_split_stratified(X_res, y_res)
+
+                from drtb.model import train_and_select_best
+                best_name, best_model, report = train_and_select_best(X_train, y_train, X_test, y_test, models, params)
+
+            st.success(f"Model selection finished — best: {best_name} (accuracy={report[best_name]:.4f})")
+            st.subheader("All model accuracies")
+            st.write(report)
+            st.subheader("Best model details")
+            st.write(str(best_model))
+            if save_model_opt:
+                from drtb.model import save_model
+                save_model(best_model, model_path)
+                st.write(f"Saved best model to `{model_path}`")
 
 
 if __name__ == "__main__":

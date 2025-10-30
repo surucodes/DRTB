@@ -6,3 +6,5 @@ scikit-learn>=1.0
 imbalanced-learn>=0.9
 joblib>=1.1
 streamlit>=1.0
+xgboost>=1.7
+catboost>=1.1
