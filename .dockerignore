@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+venv/
+.env
+.env.local
+outputs/
+!drug_resistant_tuberculosis/outputs/models
+!drug_resistant_tuberculosis/outputs/models/**
+uploads/
+.ipynb_checkpoints/
+.git
+node_modules
+Dockerfile
+*.log
+*.sqlite3

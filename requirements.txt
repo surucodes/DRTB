@@ -1,0 +1,17 @@
+# Minimal, pinned runtime requirements for the Flask/ML app. Adjust as needed for your deployment.
+pandas==1.5.3
+numpy==1.24.3
+matplotlib==3.6.3
+seaborn==0.12.2
+scikit-learn==1.2.2
+imbalanced-learn==0.10.1
+joblib==1.2.0
+streamlit==1.24.1
+xgboost==1.7.6
+# Pin setuptools to avoid pkg_resources deprecation warnings from gunicorn (use a released 80.x)
+setuptools==80.9.0
+# Use a catboost version compatible with Python 3.11 (1.2.x series)
+catboost==1.2.8
+lightgbm==3.3.5
+gunicorn==20.1.0
+Flask==2.2.5
