@@ -115,6 +115,7 @@ def run():
                 # replicate the same candidate models and params as the CLI runner
                 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, AdaBoostClassifier
                 from sklearn.tree import DecisionTreeClassifier
+                from sklearn.ensemble import VotingClassifier
                 from sklearn.neighbors import KNeighborsClassifier
                 from sklearn.linear_model import LogisticRegression
                 from xgboost import XGBClassifier
@@ -166,6 +167,44 @@ def run():
                 if has_catboost:
                     models["CatBoost"] = CatBoostClassifier(verbose=False)
 
+                # --- Add the two ensemble models to the candidate list ---
+                try:
+                    # Ensemble 1: RF + GB + DT (soft voting)
+                    v1_estimators = [
+                        ("rf", RandomForestClassifier(n_estimators=100, random_state=42)),
+                        ("gb", GradientBoostingClassifier(n_estimators=100)),
+                        ("dt", DecisionTreeClassifier())
+                    ]
+                    ensemble1 = VotingClassifier(estimators=v1_estimators, voting='soft', n_jobs=-1)
+                    models["Ensemble_RF_GB_DT"] = ensemble1
+                except Exception:
+                    pass
+
+                try:
+                    # Ensemble 2: XGB + stacking (if available) + CatBoost
+                    v2_estimators = []
+                    try:
+                        xgb_est = XGBClassifier(use_label_encoder=False, eval_metric='logloss', n_estimators=50)
+                        v2_estimators.append(("xgb", xgb_est))
+                    except Exception:
+                        pass
+                    if 'stacking' in locals():
+                        try:
+                            v2_estimators.append(("stacking", stacking))
+                        except Exception:
+                            pass
+                    if has_catboost:
+                        try:
+                            cat_est = CatBoostClassifier(verbose=False, random_state=42)
+                            v2_estimators.append(("cat", cat_est))
+                        except Exception:
+                            pass
+                    if v2_estimators:
+                        ensemble2 = VotingClassifier(estimators=v2_estimators, voting='soft', n_jobs=-1)
+                        models["Ensemble_XGB_Stack_Cat"] = ensemble2
+                except Exception:
+                    pass
+
                 params = {
                     "RandomForest": {"n_estimators": [50, 100], "max_depth": [None, 10]},
                     "GradientBoosting": {"n_estimators": [50], "learning_rate": [0.1]},
@@ -186,6 +225,24 @@ def run():
             st.success(f"Model selection finished — best: {best_name} (accuracy={report[best_name]:.4f})")
             st.subheader("All model accuracies")
             st.write(report)
+
+            # Show ensemble-only comparison for quick inspection
+            try:
+                import pandas as _pd
+                acc_series = _pd.Series(report)
+                # ensembles include names with 'Ensemble' or 'Stacking'
+                ensemble_keys = [k for k in acc_series.index if 'Ensemble' in k or 'ensemble' in k or 'Stacking' in k or k.startswith('Ensemble_')]
+                if len(ensemble_keys) > 0:
+                    st.subheader('Ensemble models comparison')
+                    ens_df = acc_series.loc[ensemble_keys].sort_values(ascending=False).rename('accuracy').to_frame()
+                    st.dataframe(ens_df.style.format({'accuracy': '{:.4f}'}))
+                    # bar chart for quick visual
+                    st.bar_chart(ens_df['accuracy'])
+                else:
+                    st.info('No ensemble models were constructed in this run.')
+            except Exception:
+                # non-fatal - continue
+                pass
 
             # Detailed visualizations and metrics for the best model
             st.subheader("Detailed results for best model")
