@@ -12,8 +12,15 @@ logger = get_logger(__name__)
 
 def save_object(file_path: str, obj: Any) -> None:
     try:
-        joblib.dump(obj, file_path)
-        logger.info(f"Saved object to {file_path}")
+        # ensure parent directory exists
+        from pathlib import Path
+        p = Path(file_path).expanduser()
+        if not p.parent.exists():
+            p.parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(obj, str(p))
+        saved = str(p.resolve())
+        logger.info(f"Saved object to {saved}")
+        return saved
     except Exception as e:
         logger.exception("Failed to save object")
         raise CustomException(e, sys)

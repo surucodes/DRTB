@@ -55,6 +55,9 @@ def run():
 
     save_model_opt = st.sidebar.checkbox("Save trained model", value=True)
     model_path = st.sidebar.text_input("Model filename", value="gaussian_nb_model.joblib")
+    # option to save the best model after model-selection
+    save_best_after_selection = st.sidebar.checkbox("Save best model after selection", value=False)
+    selection_save_dir = st.sidebar.text_input("Directory to save best model", value="outputs/models")
 
     if uploaded is not None:
         try:
@@ -358,8 +361,28 @@ def run():
 
             if save_model_opt:
                 from drtb.model import save_model
-                save_model(best_model, model_path)
-                st.write(f"Saved best model to `{model_path}`")
+                # if a relative path was provided, save relative to app base_dir
+                try:
+                    base_dir = os.path.dirname(__file__)
+                    # ensure parent dirs exist and return absolute path
+                    saved_path = save_model(best_model, os.path.join(base_dir, model_path))
+                except Exception:
+                    # fallback: try saving directly with provided path
+                    saved_path = save_model(best_model, model_path)
+                st.write(f"Saved best model to `{saved_path}`")
+
+            # Save best model into a chosen directory after model selection if requested
+            if save_best_after_selection:
+                try:
+                    base_dir = os.path.dirname(__file__)
+                    out_dir = os.path.join(base_dir, selection_save_dir)
+                    os.makedirs(out_dir, exist_ok=True)
+                    save_fname = f"{best_name}_model.joblib"
+                    save_path = os.path.join(out_dir, save_fname)
+                    saved = save_model(best_model, save_path)
+                    st.success(f"Best model saved to: {saved}")
+                except Exception as e:
+                    st.error(f"Failed to save best model: {e}")
 
 
 if __name__ == "__main__":

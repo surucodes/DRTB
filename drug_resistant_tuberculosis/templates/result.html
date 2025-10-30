@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Results</title>
+  </head>
+  <body>
+    <a href="/">← Back</a>
+    <h1>Results</h1>
+    {% if error %}
+      <h2 style="color: red">Error</h2>
+      <pre>{{ error }}</pre>
+      <pre>{{ traceback }}</pre>
+    {% else %}
+      {% if single %}
+        <h2>Single model (GaussianNB) Results</h2>
+        <p>Accuracy: {{ "%.4f"|format(accuracy) }}</p>
+        <h3>Sample predictions</h3>
+        <pre>y_test: {{ y_test[:10] }}</pre>
+        <pre>y_pred: {{ y_pred[:10] }}</pre>
+        {% if saved_path %}
+          <p>Saved model to: {{ saved_path }}</p>
+        {% endif %}
+      {% else %}
+        <h2>Model selection results</h2>
+        <p>Best model: {{ best_name }}</p>
+        <h3>All model accuracies (sorted)</h3>
+        <table border="1" cellpadding="4">
+          <tr><th>Model</th><th>Accuracy</th></tr>
+          {% for name,acc in report %}
+            <tr><td>{{ name }}</td><td>{{ "%.4f"|format(acc) }}</td></tr>
+          {% endfor %}
+        </table>
+        {% if saved_path %}
+          <p>Saved best model to: {{ saved_path }}</p>
+        {% endif %}
+      {% endif %}
+    {% endif %}
+  </body>
+</html>

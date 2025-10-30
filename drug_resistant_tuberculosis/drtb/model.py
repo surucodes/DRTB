@@ -25,7 +25,8 @@ def score(model, X, y):
 
 
 def save_model(model, path: str):
-    save_object(path, model)
+    """Save model object to disk and return absolute path."""
+    return save_object(path, model)
 
 
 def load_model(path: str):

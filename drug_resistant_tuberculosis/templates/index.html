@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DR-TB Model UI</title>
+  </head>
+  <body>
+    <h1>DR-TB Model Training</h1>
+    <form action="/run" method="post" enctype="multipart/form-data">
+      <label>Upload CSV (optional):</label><br>
+      <input type="file" name="dataset"><br><br>
+
+      <label>Action:</label><br>
+      <input type="radio" name="action" value="single" checked> Train single model (GaussianNB)<br>
+      <input type="radio" name="action" value="selection"> Run model selection (multiple)
+      <br><br>
+
+      <label>Save best model after run:</label>
+      <input type="checkbox" name="save_best" value="1"><br>
+      <label>Save directory (relative to package):</label>
+      <input type="text" name="save_dir" value="outputs/models"><br><br>
+
+      <button type="submit">Run</button>
+    </form>
+  </body>
+</html>
