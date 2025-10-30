@@ -174,4 +174,4 @@ def run():
 
 if __name__ == '__main__':
     # run development server
-    app.run(host='0.0.0.0', port=8502, debug=True)
+    app.run(host='0.0.0.0')
