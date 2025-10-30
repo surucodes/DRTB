@@ -36,19 +36,37 @@ def evaluate_models(X_train, y_train, X_test, y_test, models: Dict[str, Any], pa
     fitted_models = {}
     params = params or {}
 
+    # convert pandas inputs to numpy arrays to avoid feature-name issues with some libraries (e.g., xgboost)
+    try:
+        import pandas as _pd
+        if isinstance(X_train, _pd.DataFrame):
+            X_train_np = X_train.to_numpy()
+            X_test_np = X_test.to_numpy()
+        else:
+            X_train_np = X_train
+            X_test_np = X_test
+        if hasattr(y_train, "to_numpy"):
+            y_train_np = y_train.to_numpy()
+            y_test_np = y_test.to_numpy()
+        else:
+            y_train_np = y_train
+            y_test_np = y_test
+    except Exception:
+        X_train_np, X_test_np, y_train_np, y_test_np = X_train, X_test, y_train, y_test
+
     for name, model in models.items():
         try:
             logger.info(f"Training model: {name}")
             if name in params and params[name]:
                 grid = GridSearchCV(model, params[name], cv=3, n_jobs=-1, scoring='accuracy')
-                grid.fit(X_train, y_train)
+                grid.fit(X_train_np, y_train_np)
                 best = grid.best_estimator_
                 logger.info(f"Best params for {name}: {grid.best_params_}")
             else:
                 best = model
-                best.fit(X_train, y_train)
+                best.fit(X_train_np, y_train_np)
 
-            preds = best.predict(X_test)
+            preds = best.predict(X_test_np)
             acc = accuracy_score(y_test, preds)
             report[name] = acc
             fitted_models[name] = best

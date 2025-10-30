@@ -37,6 +37,8 @@ def main():
         except Exception:
             has_catboost = False
 
+        from sklearn.ensemble import HistGradientBoostingClassifier
+
         models = {
             "RandomForest": RandomForestClassifier(n_jobs=-1),
             "GradientBoosting": GradientBoostingClassifier(),
@@ -44,7 +46,8 @@ def main():
             "DecisionTree": DecisionTreeClassifier(),
             "KNeighbors": KNeighborsClassifier(),
             "LogisticRegression": LogisticRegression(max_iter=1000),
-            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss')
+            "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
+            "HistGradientBoosting": HistGradientBoostingClassifier()
         }
         if has_catboost:
             models["CatBoost"] = CatBoostClassifier(verbose=False)
