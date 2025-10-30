@@ -11,6 +11,10 @@ import os
 from werkzeug.utils import secure_filename
 from pathlib import Path
 import traceback
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import numpy as np
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('FLASK_SECRET', 'drtb-secret')
@@ -70,6 +74,44 @@ def run():
             model = train_gaussian_nb(X_train, y_train)
             accuracy = float(model.score(X_test, y_test))
             y_pred = model.predict(X_test)
+
+            # generate and save plots (confusion matrix, ROC, PR) when possible
+            try:
+                from sklearn.metrics import confusion_matrix
+                from drtb.metrics import print_confusion_matrix, plot_roc, plot_precision_recall, convert_binary_category_to_string
+
+                cm = confusion_matrix(y_test, y_pred)
+                class_names = convert_binary_category_to_string(sorted(list(set(y_test))))
+                fig_cm = print_confusion_matrix(cm, class_names)
+                cm_fname = f"confusion_single_{int(np.random.uniform(0,1)*1e9)}.png"
+                cm_path = os.path.join(OUTPUT_DIR, cm_fname)
+                fig_cm.savefig(cm_path, bbox_inches='tight')
+                plt.close(fig_cm)
+
+                probs = None
+                if hasattr(model, 'predict_proba'):
+                    probs = model.predict_proba(X_test)[:, 1]
+                elif hasattr(model, 'decision_function'):
+                    try:
+                        probs = model.decision_function(X_test)
+                    except Exception:
+                        probs = None
+
+                roc_fname = pr_fname = None
+                if probs is not None:
+                    fig_roc, _ = plot_roc(y_test, probs)
+                    roc_fname = f"roc_single_{int(np.random.uniform(0,1)*1e9)}.png"
+                    fig_roc.savefig(os.path.join(OUTPUT_DIR, roc_fname), bbox_inches='tight')
+                    plt.close(fig_roc)
+
+                    fig_pr, _ = plot_precision_recall(y_test, probs)
+                    pr_fname = f"pr_single_{int(np.random.uniform(0,1)*1e9)}.png"
+                    fig_pr.savefig(os.path.join(OUTPUT_DIR, pr_fname), bbox_inches='tight')
+                    plt.close(fig_pr)
+                else:
+                    roc_fname = pr_fname = None
+            except Exception:
+                cm_fname = roc_fname = pr_fname = None
 
             # optionally save
             saved_path = None
@@ -165,13 +207,98 @@ def run():
 
             # convert report to list for template
             items = sorted(report.items(), key=lambda x: -x[1])
-            return render_template('result.html', single=False, best_name=best_name, report=items, saved_path=saved_path)
+
+            # create a horizontal bar chart of accuracies
+            try:
+                fig = plt.figure(figsize=(8, 4))
+                names = [n for n, a in items]
+                accs = [a for n, a in items]
+                y_pos = np.arange(len(names))
+                plt.barh(y_pos, accs, align='center', color='#0b5ed7')
+                plt.yticks(y_pos, names)
+                plt.xlabel('Accuracy')
+                plt.xlim(0, 1)
+                plt.gca().invert_yaxis()
+                acc_fname = f"model_accuracies_{int(np.random.uniform(0,1)*1e9)}.png"
+                acc_path = os.path.join(OUTPUT_DIR, acc_fname)
+                fig.savefig(acc_path, bbox_inches='tight')
+                plt.close(fig)
+            except Exception:
+                acc_fname = None
+
+            # best-model visualizations (confusion, roc, pr, feature importances)
+            cm_fname = roc_fname = pr_fname = feat_fname = None
+            try:
+                from sklearn.metrics import confusion_matrix
+                from drtb.metrics import print_confusion_matrix, plot_roc, plot_precision_recall, convert_binary_category_to_string
+
+                y_pred = best_model.predict(X_test)
+                cm = confusion_matrix(y_test, y_pred)
+                fig_cm = print_confusion_matrix(cm, convert_binary_category_to_string(sorted(list(set(y_test)))))
+                cm_fname = f"confusion_{best_name}_{int(np.random.uniform(0,1)*1e9)}.png"
+                fig_cm.savefig(os.path.join(OUTPUT_DIR, cm_fname), bbox_inches='tight')
+                plt.close(fig_cm)
+
+                probs = None
+                if hasattr(best_model, 'predict_proba'):
+                    probs = best_model.predict_proba(X_test)[:, 1]
+                elif hasattr(best_model, 'decision_function'):
+                    try:
+                        probs = best_model.decision_function(X_test)
+                    except Exception:
+                        probs = None
+
+                if probs is not None:
+                    fig_roc, _ = plot_roc(y_test, probs)
+                    roc_fname = f"roc_{best_name}_{int(np.random.uniform(0,1)*1e9)}.png"
+                    fig_roc.savefig(os.path.join(OUTPUT_DIR, roc_fname), bbox_inches='tight')
+                    plt.close(fig_roc)
+
+                    fig_pr, _ = plot_precision_recall(y_test, probs)
+                    pr_fname = f"pr_{best_name}_{int(np.random.uniform(0,1)*1e9)}.png"
+                    fig_pr.savefig(os.path.join(OUTPUT_DIR, pr_fname), bbox_inches='tight')
+                    plt.close(fig_pr)
+
+                # feature importances if available
+                try:
+                    importances = None
+                    if hasattr(best_model, 'feature_importances_'):
+                        importances = best_model.feature_importances_
+                    elif hasattr(best_model, 'coef_'):
+                        arr = np.ravel(best_model.coef_)
+                        importances = np.abs(arr)
+                    if importances is not None and len(importances) == X_train.shape[1]:
+                        feat_names = getattr(X_train, 'columns', [f'feat_{i}' for i in range(X_train.shape[1])])
+                        fig_f = plt.figure(figsize=(8, 4))
+                        idx = np.argsort(importances)[::-1][:20]
+                        plt.barh(range(len(idx)), importances[idx][::-1], color='#0b5ed7')
+                        plt.yticks(range(len(idx)), [feat_names[i] for i in idx][::-1])
+                        plt.title('Top feature importances')
+                        feat_fname = f"feat_imp_{best_name}_{int(np.random.uniform(0,1)*1e9)}.png"
+                        fig_f.savefig(os.path.join(OUTPUT_DIR, feat_fname), bbox_inches='tight')
+                        plt.close(fig_f)
+                except Exception:
+                    feat_fname = None
+            except Exception:
+                pass
+
+            images = {'accuracies': acc_fname, 'confusion': cm_fname, 'roc': roc_fname, 'pr': pr_fname, 'feat_imp': feat_fname}
+            return render_template('result.html', single=False, best_name=best_name, report=items, saved_path=saved_path, images=images)
 
     except Exception as e:
         tb = traceback.format_exc()
         return render_template('result.html', error=str(e), traceback=tb)
 
 
+@app.route('/outputs/<path:filename>')
+def outputs_file(filename):
+    # serve files from the package OUTPUT_DIR
+    full = os.path.join(OUTPUT_DIR, filename)
+    if os.path.exists(full):
+        return send_file(full)
+    return ('Not found', 404)
+
+
 if __name__ == '__main__':
     # run development server
-    app.run(host='0.0.0.0')
+    app.run(host='0.0.0.0', port=8502, debug=True)

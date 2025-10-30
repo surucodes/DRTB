@@ -17,3 +17,22 @@ pre {
 .table thead th {
   background: #e9f2ff;
 }
+
+/* Result images styling */
+.result-img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  border: 1px solid #e6eef8;
+  background: #fff;
+  padding: 6px;
+}
+
+.card.shadow-sm {
+  border-radius: 10px;
+}
+
+.lead {
+  color: #0b5ed7;
+  font-weight: 600;
+}

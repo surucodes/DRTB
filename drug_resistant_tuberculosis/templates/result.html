@@ -37,6 +37,61 @@
               {% if saved_path %}
                 <div class="alert alert-success">Saved best model to: <code>{{ saved_path }}</code></div>
               {% endif %}
+              {% if images %}
+                <h5 class="mt-3">Visualizations</h5>
+                <div class="row g-3">
+                  {% if images.accuracies %}
+                    <div class="col-12">
+                      <div class="card mb-2">
+                        <div class="card-body">
+                          <h6>Model accuracies</h6>
+                          <img src="{{ url_for('outputs_file', filename=images.accuracies) }}" class="img-fluid result-img" alt="accuracies">
+                        </div>
+                      </div>
+                    </div>
+                  {% endif %}
+                  <div class="col-md-6">
+                    {% if images.confusion %}
+                      <div class="card mb-2">
+                        <div class="card-body">
+                          <h6>Confusion matrix</h6>
+                          <img src="{{ url_for('outputs_file', filename=images.confusion) }}" class="img-fluid result-img" alt="confusion">
+                        </div>
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="col-md-6">
+                    {% if images.feat_imp %}
+                      <div class="card mb-2">
+                        <div class="card-body">
+                          <h6>Feature importances</h6>
+                          <img src="{{ url_for('outputs_file', filename=images.feat_imp) }}" class="img-fluid result-img" alt="feature importances">
+                        </div>
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="col-md-6">
+                    {% if images.roc %}
+                      <div class="card mb-2">
+                        <div class="card-body">
+                          <h6>ROC curve</h6>
+                          <img src="{{ url_for('outputs_file', filename=images.roc) }}" class="img-fluid result-img" alt="roc">
+                        </div>
+                      </div>
+                    {% endif %}
+                  </div>
+                  <div class="col-md-6">
+                    {% if images.pr %}
+                      <div class="card mb-2">
+                        <div class="card-body">
+                          <h6>Precision-Recall</h6>
+                          <img src="{{ url_for('outputs_file', filename=images.pr) }}" class="img-fluid result-img" alt="pr">
+                        </div>
+                      </div>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endif %}
             {% endif %}
           {% endif %}
         </div>
