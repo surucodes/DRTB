@@ -1,27 +1,65 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DR-TB Model UI</title>
-  </head>
-  <body>
-    <h1>DR-TB Model Training</h1>
-    <form action="/run" method="post" enctype="multipart/form-data">
-      <label>Upload CSV (optional):</label><br>
-      <input type="file" name="dataset"><br><br>
+{% extends 'base.html' %}
 
-      <label>Action:</label><br>
-      <input type="radio" name="action" value="single" checked> Train single model (GaussianNB)<br>
-      <input type="radio" name="action" value="selection"> Run model selection (multiple)
-      <br><br>
+{% block content %}
+  <div class="row">
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">Start an experiment</h3>
+          <form action="/run" method="post" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label class="form-label">Upload CSV (optional)</label>
+              <input class="form-control" type="file" name="dataset">
+            </div>
 
-      <label>Save best model after run:</label>
-      <input type="checkbox" name="save_best" value="1"><br>
-      <label>Save directory (relative to package):</label>
-      <input type="text" name="save_dir" value="outputs/models"><br><br>
+            <div class="mb-3">
+              <label class="form-label">Action</label>
+              <div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="action" id="actSingle" value="single" checked>
+                  <label class="form-check-label" for="actSingle">Train single model (GaussianNB)</label>
+                </div>
+                <div class="form-check form-check-inline">
+                  <input class="form-check-input" type="radio" name="action" id="actSelect" value="selection">
+                  <label class="form-check-label" for="actSelect">Run model selection (multiple)</label>
+                </div>
+              </div>
+            </div>
 
-      <button type="submit">Run</button>
-    </form>
-  </body>
-</html>
+            <div class="mb-3 form-check">
+              <input class="form-check-input" type="checkbox" name="save_best" id="saveBest" value="1">
+              <label class="form-check-label" for="saveBest">Save best model after run</label>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Save directory (relative to package)</label>
+              <input class="form-control" type="text" name="save_dir" value="outputs/models">
+            </div>
+
+            <button class="btn btn-primary" type="submit">Run</button>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4">
+      <div class="card text-bg-light shadow-sm mb-3">
+        <div class="card-body">
+          <h5 class="card-title">Quick tips</h5>
+          <ul>
+            <li>Use model selection to compare ensembles and base learners.</li>
+            <li>Large model selection runs can take time — consider running offline.</li>
+            <li>Saved models appear in <code>drug_resistant_tuberculosis/outputs/</code>.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Environment</h5>
+          <p class="mb-0"><strong>Python</strong> — running inside your venv</p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

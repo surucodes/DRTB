@@ -1,0 +1,19 @@
+/* Custom styles for DR-TB app */
+body {
+  background: #f7f9fc;
+}
+.card-title {
+  color: #0b5ed7;
+}
+.navbar-brand {
+  font-weight: 600;
+}
+pre {
+  background: #fff;
+  padding: .75rem;
+  border-radius: 6px;
+  border: 1px solid #e6eef8;
+}
+.table thead th {
+  background: #e9f2ff;
+}
