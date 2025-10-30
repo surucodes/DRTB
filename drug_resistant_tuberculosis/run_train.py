@@ -31,11 +31,18 @@ def main():
         from sklearn.neighbors import KNeighborsClassifier
         from sklearn.linear_model import LogisticRegression
         from xgboost import XGBClassifier
+        from sklearn.naive_bayes import GaussianNB, ComplementNB
+        from sklearn.svm import SVC
         try:
             from catboost import CatBoostClassifier
             has_catboost = True
         except Exception:
             has_catboost = False
+        try:
+            from lightgbm import LGBMClassifier
+            has_lgb = True
+        except Exception:
+            has_lgb = False
 
         from sklearn.ensemble import HistGradientBoostingClassifier
 
@@ -48,9 +55,14 @@ def main():
             "DecisionTree": DecisionTreeClassifier(),
             "KNeighbors": KNeighborsClassifier(),
             "LogisticRegression": LogisticRegression(max_iter=1000),
+            "GaussianNB": GaussianNB(),
+            "ComplementNB": ComplementNB(),
             "XGBoost": XGBClassifier(use_label_encoder=False, eval_metric='logloss'),
-            "HistGradientBoosting": HistGradientBoostingClassifier()
+            "HistGradientBoosting": HistGradientBoostingClassifier(),
+            "SVC": SVC(probability=True)
         }
+        if has_lgb:
+            models["LightGBM"] = LGBMClassifier()
         # Add a stacking ensemble of top candidate models (no hyperparameter tuning here)
         try:
             estimators = [

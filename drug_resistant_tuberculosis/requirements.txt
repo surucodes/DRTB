@@ -8,3 +8,4 @@ joblib>=1.1
 streamlit>=1.0
 xgboost>=1.7
 catboost>=1.1
+lightgbm>=3.3

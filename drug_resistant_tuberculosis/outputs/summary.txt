@@ -1,0 +1,14 @@
+Best model: CatBoost
+Model accuracies:
+  RandomForest: 0.8068
+  GradientBoosting: 0.8409
+  AdaBoost: 0.7955
+  DecisionTree: 0.8182
+  KNeighbors: 0.8068
+  LogisticRegression: 0.8182
+  XGBoost: 0.8409
+  HistGradientBoosting: 0.8182
+  CatBoost: 0.8523
+  StackingEnsemble: 0.8523
+ROC AUC: 0.9070
+Average precision (AP): 0.9129
