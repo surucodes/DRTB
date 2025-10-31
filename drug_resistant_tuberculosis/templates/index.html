@@ -1,11 +1,107 @@
 {% extends 'base.html' %}
 
 {% block content %}
-  <div class="row">
-    <div class="col-md-8">
+  <div class="row g-4">
+    <div class="col-md-6">
       <div class="card shadow-sm">
         <div class="card-body">
-          <h3 class="card-title">Start an experiment</h3>
+          <h4 class="card-title">Predict (pretrained)</h4>
+          <p class="text-muted">Quick single-patient prediction using a pretrained model. Select a model or leave blank to use the latest available.</p>
+          <form action="/predict" method="post">
+            {% if pretrained_models and pretrained_models|length > 0 %}
+            <div class="mb-3">
+              <label class="form-label">Pretrained model</label>
+              <select class="form-select" name="pretrained_name">
+                <option value="">-- Auto select latest --</option>
+                {% for m in pretrained_models %}
+                  <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% else %}
+              <div class="alert alert-warning">No pretrained models found in <code>outputs/models/</code>.</div>
+            {% endif %}
+
+            <div class="row g-2">
+              <div class="col-6">
+                <label class="form-label">Gender</label>
+                <select class="form-select" name="Gender">
+                  <option>Male</option>
+                  <option>Female</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Age</label>
+                <select class="form-select" name="Age">
+                  <option>&lt; 45 years</option>
+                  <option>&gt;= 45 years</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Contact DR</label>
+                <select class="form-select" name="Contact DR">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Smoking</label>
+                <select class="form-select" name="Smoking">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Alcohol</label>
+                <select class="form-select" name="Alcohol">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Cavitary pulmonary</label>
+                <select class="form-select" name="Cavitary pulmonary">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Diabetes</label>
+                <select class="form-select" name="Diabetes">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">Nutritional</label>
+                <select class="form-select" name="Nutritional">
+                  <option>Underweight</option>
+                  <option>Normal</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label">TBoutside</label>
+                <select class="form-select" name="TBoutside">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <button class="btn btn-success" type="submit">Predict</button>
+              <a class="btn btn-link ms-2" href="/">Reset</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h4 class="card-title">Train / Model selection</h4>
+          <p class="text-muted">Upload a CSV to run model selection, or run with the repository dataset. Choose whether to prefer an available pretrained model.</p>
           <form action="/run" method="post" enctype="multipart/form-data">
             <div class="mb-3">
               <label class="form-label">Upload CSV (optional)</label>
@@ -13,19 +109,19 @@
             </div>
 
             <div class="mb-3">
-              <label class="form-label">Action</label>
+              <label class="form-label">Mode</label>
               <div>
                 {% if pretrained_models and pretrained_models|length > 0 %}
                   <div class="form-check form-check-inline">
                     <input class="form-check-input" type="radio" name="mode" id="modePretrained" value="pretrained" checked>
-                    <label class="form-check-label" for="modePretrained">Use pretrained model (fast)</label>
+                    <label class="form-check-label" for="modePretrained">Prefer pretrained (fast)</label>
                   </div>
                   <div class="form-check form-check-inline">
                     <input class="form-check-input" type="radio" name="mode" id="modeSelect" value="selection">
-                    <label class="form-check-label" for="modeSelect">Run model selection (train multiple) — slow</label>
+                    <label class="form-check-label" for="modeSelect">Run model selection (slow)</label>
                   </div>
                 {% else %}
-                  <p class="mb-0">No pretrained models found in <code>outputs/models/</code>. The UI will run model selection (train multiple models).</p>
+                  <p class="mb-0">No pretrained models found. The UI will run model selection.</p>
                   <input type="hidden" name="mode" value="selection">
                 {% endif %}
               </div>
@@ -37,21 +133,19 @@
             </div>
 
             {% if pretrained_models and pretrained_models|length > 0 %}
-            <div id="pretrainedControls">
-              <div class="mb-3">
-                <label class="form-label">Pretrained model (optional)- Choose for 1st action only. </label>
-                <select class="form-select" name="pretrained_name" id="pretrainedName">
-                  <option value="">-- Auto select latest --</option>
-                  {% for m in pretrained_models %}
-                    <option value="{{ m }}">{{ m }}</option>
-                  {% endfor %}
-                </select>
-              </div>
+            <div class="mb-3">
+              <label class="form-label">Pretrained model (optional)</label>
+              <select class="form-select" name="pretrained_name">
+                <option value="">-- Auto select latest --</option>
+                {% for m in pretrained_models %}
+                  <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
 
-              <div class="mb-3 form-check">
-                <input class="form-check-input" type="checkbox" name="overwrite_if_improved" id="overwriteIfImproved" value="1">
-                <label class="form-check-label" for="overwriteIfImproved">If training yields higher accuracy, overwrite the selected pretrained model</label>
-              </div>
+            <div class="mb-3 form-check">
+              <input class="form-check-input" type="checkbox" name="overwrite_if_improved" id="overwriteIfImproved" value="1">
+              <label class="form-check-label" for="overwriteIfImproved">If training yields higher accuracy, overwrite the selected pretrained model</label>
             </div>
             {% endif %}
 
@@ -62,26 +156,6 @@
 
             <button class="btn btn-primary" type="submit">Run</button>
           </form>
-        </div>
-      </div>
-    </div>
-
-    <div class="col-md-4">
-      <div class="card text-bg-light shadow-sm mb-3">
-        <div class="card-body">
-          <h5 class="card-title">Quick tips</h5>
-          <ul>
-            <li>Use model selection to compare ensembles and base learners.</li>
-            <li>Large model selection runs can take time — consider running offline.</li>
-            <li>Saved models appear in <code>drug_resistant_tuberculosis/outputs/</code>.</li>
-          </ul>
-        </div>
-      </div>
-
-      <div class="card shadow-sm">
-        <div class="card-body">
-          <h5 class="card-title">Environment</h5>
-          <p class="mb-0"><strong>Python</strong> — running inside your venv</p>
         </div>
       </div>
     </div>

@@ -1,0 +1,35 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <a class="btn btn-link mb-3" href="/predict">← Back to predict</a>
+  <div class="row">
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">Prediction result</h3>
+          {% if error %}
+            <div class="alert alert-danger"><strong>Error:</strong> {{ error }}</div>
+            {% if traceback %}
+              <pre>{{ traceback }}</pre>
+            {% endif %}
+          {% else %}
+            <p>Model: <strong>{{ model_name }}</strong></p>
+            <h4 class="mt-3">Predicted class: <strong>{{ prediction_str }}</strong> <small class="text-muted">(raw: {{ prediction }})</small></h4>
+            {% if probability is not none %}
+              <p>Probability of positive (DR): <strong>{{ "%.3f"|format(probability) }}</strong></p>
+            {% endif %}
+
+            <h5 class="mt-3">Input features</h5>
+            <table class="table table-sm">
+              <tbody>
+                {% for k,v in input_row.items() %}
+                  <tr><th style="width:40%">{{ k }}</th><td>{{ v }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

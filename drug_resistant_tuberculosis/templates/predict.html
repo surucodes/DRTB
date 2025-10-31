@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+
+{% block content %}
+  <a class="btn btn-link mb-3" href="/">← Back</a>
+  <div class="row">
+    <div class="col-md-8">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h3 class="card-title">Predict using a pretrained model</h3>
+          <p class="text-muted">Choose a pretrained model and enter the patient's features below. The app will run the same preprocessing used during training before predicting.</p>
+          <form action="/predict" method="post">
+            {% if pretrained_models and pretrained_models|length > 0 %}
+            <div class="mb-3">
+              <label class="form-label">Pretrained model</label>
+              <select class="form-select" name="pretrained_name">
+                <option value="">-- Auto select latest --</option>
+                {% for m in pretrained_models %}
+                  <option value="{{ m }}">{{ m }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            {% else %}
+              <div class="alert alert-warning">No pretrained models found in <code>outputs/models/</code>.</div>
+            {% endif %}
+
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Gender</label>
+                <select class="form-select" name="Gender">
+                  <option>Male</option>
+                  <option>Female</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Age</label>
+                <select class="form-select" name="Age">
+                  <option>&lt; 45 years</option>
+                  <option>&gt;= 45 years</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Contact with DR case</label>
+                <select class="form-select" name="Contact DR">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Smoking</label>
+                <select class="form-select" name="Smoking">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Alcohol</label>
+                <select class="form-select" name="Alcohol">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Cavitary pulmonary</label>
+                <select class="form-select" name="Cavitary pulmonary">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Diabetes</label>
+                <select class="form-select" name="Diabetes">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Nutritional status</label>
+                <select class="form-select" name="Nutritional">
+                  <option>Underweight</option>
+                  <option>Normal</option>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">TB outside</label>
+                <select class="form-select" name="TBoutside">
+                  <option>Yes</option>
+                  <option>No</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="mt-3">
+              <button class="btn btn-success" type="submit">Predict</button>
+              <a class="btn btn-secondary ms-2" href="/">Cancel</a>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Notes</h5>
+          <p class="mb-0">The app will apply the same preprocessing (encoding / one-hot) used in training. If your model expects specific dummy columns, missing categories will be filled with zeros.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+{% endblock %}

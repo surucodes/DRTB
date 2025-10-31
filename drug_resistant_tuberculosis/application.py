@@ -38,11 +38,71 @@ if BASE_DIR not in sys.path:
 # default production behavior: prefer pretrained models (set to '1' to enable)
 USE_PRETRAINED_DEFAULT = os.environ.get('USE_PRETRAINED', '1') == '1'
 
+# one-time initializer flag for manifest backfill
+_FEATURE_MANIFESTS_INITIALIZED = False
+
+
+def ensure_feature_manifests():
+    """Best-effort backfill of feature manifests for existing pretrained models.
+
+    If a model lacks <model>.features.json, we'll try to infer expected features:
+    - Prefer model.feature_names_in_ if available
+    - Else, use columns from preprocessing the default dataset (dr_dataset.csv) if the
+      length matches model.n_features_in_, then write manifest.
+    This improves prediction alignment for legacy models trained without feature manifests.
+    """
+    global _FEATURE_MANIFESTS_INITIALIZED
+    if _FEATURE_MANIFESTS_INITIALIZED:
+        return
+    try:
+        models = find_pretrained_models()
+        if not models:
+            _FEATURE_MANIFESTS_INITIALIZED = True
+            return
+        default_csv = os.path.join(BASE_DIR, 'dr_dataset.csv')
+        default_feats = None
+        if os.path.exists(default_csv):
+            try:
+                from drtb.data import load_data
+                from drtb.preprocess import preprocess_pipeline, split_X_y
+                import pandas as pd
+                df = load_data(default_csv)
+                dfp = preprocess_pipeline(df)
+                X_all, _ = split_X_y(dfp)
+                default_feats = list(getattr(X_all, 'columns', []))
+            except Exception:
+                default_feats = None
+        for name in models:
+            full = resolve_pretrained_fullpath(name)
+            if not full:
+                continue
+            # skip if manifest exists
+            from pathlib import Path as _P
+            mf = str(_P(full)) + '.features.json'
+            if os.path.exists(mf):
+                continue
+            try:
+                mdl = load_pretrained_model(full)
+                # 1) if model carries names, write them
+                if hasattr(mdl, 'feature_names_in_'):
+                    _save_feature_manifest(full, list(mdl.feature_names_in_))
+                    continue
+                # 2) else, if we have default feature list and dims match, use that
+                if default_feats and hasattr(mdl, 'n_features_in_'):
+                    if len(default_feats) == int(mdl.n_features_in_):
+                        _save_feature_manifest(full, default_feats)
+            except Exception:
+                # ignore models we cannot load
+                continue
+    finally:
+        _FEATURE_MANIFESTS_INITIALIZED = True
+
 
 @app.route('/')
 def index():
     """Show upload form and action choices."""
     # pass available pretrained models to the template
+    ensure_feature_manifests()
     models = find_pretrained_models()
     return render_template('index.html', pretrained_models=models)
 
@@ -122,6 +182,39 @@ def resolve_pretrained_fullpath(filename: str):
         except Exception:
             continue
     return None
+
+
+def _save_feature_manifest(model_path: str, feature_names):
+    """Save a small JSON manifest listing the feature names expected by the model.
+
+    The manifest will be written to <model_path>.features.json next to the model file.
+    """
+    try:
+        import json
+        p = Path(model_path)
+        manifest_path = str(p) + '.features.json'
+        with open(manifest_path, 'w', encoding='utf-8') as fh:
+            json.dump(list(feature_names), fh)
+        app.logger.info('Wrote feature manifest: %s', manifest_path)
+        return manifest_path
+    except Exception:
+        app.logger.exception('Failed to write feature manifest for %s', model_path)
+        return None
+
+
+def _load_feature_manifest(model_path: str):
+    """Load feature manifest if present. Returns list of feature names or None."""
+    try:
+        import json
+        p = Path(model_path)
+        manifest_path = str(p) + '.features.json'
+        if os.path.exists(manifest_path):
+            with open(manifest_path, 'r', encoding='utf-8') as fh:
+                return json.load(fh)
+        return None
+    except Exception:
+        app.logger.exception('Failed to read feature manifest for %s', model_path)
+        return None
 
 
 def load_pretrained_model(path):
@@ -402,6 +495,13 @@ def run():
                 try:
                     if existing_acc is None or (best_acc > existing_acc):
                         saved_path = save_model(best_model, existing_model_path)
+                        # save feature manifest alongside model for deterministic alignment at prediction
+                        try:
+                            feat_names = getattr(X_train, 'columns', None)
+                            if feat_names is not None:
+                                _save_feature_manifest(saved_path or existing_model_path, feat_names)
+                        except Exception:
+                            app.logger.exception('Failed to save feature manifest after overwrite')
                 except Exception:
                     saved_path = None
 
@@ -411,6 +511,12 @@ def run():
                 os.makedirs(save_folder, exist_ok=True)
                 fname = os.path.join(save_folder, f"{best_name}_model.joblib")
                 saved_path = save_model(best_model, fname)
+                try:
+                    feat_names = getattr(X_train, 'columns', None)
+                    if feat_names is not None:
+                        _save_feature_manifest(saved_path or fname, feat_names)
+                except Exception:
+                    app.logger.exception('Failed to save feature manifest for saved best model')
 
             # convert report to list for template
             items = sorted(report.items(), key=lambda x: -x[1])
@@ -504,6 +610,133 @@ def outputs_file(filename):
     if os.path.exists(full):
         return send_file(full)
     return ('Not found', 404)
+
+
+@app.route('/predict', methods=['GET', 'POST'])
+def predict():
+    """Allow a user to pick a pretrained model and submit feature values for a single prediction.
+
+    GET -> show the form; POST -> run preprocess on the single-row inputs, load model, predict and show result.
+    """
+    try:
+        from drtb.preprocess import preprocess_pipeline
+        import pandas as pd
+
+        ensure_feature_manifests()
+        models = find_pretrained_models()
+        if request.method == 'GET':
+            return render_template('predict.html', pretrained_models=models)
+
+        # POST: collect feature values from form
+        form = request.form
+        # expected raw fields matching original CSV header
+        fields = ['Gender', 'Age', 'Contact DR', 'Smoking', 'Alcohol', 'Cavitary pulmonary', 'Diabetes', 'Nutritional', 'TBoutside']
+        row = {}
+        for f in fields:
+            # form keys use safe names (no spaces) so try both
+            key = f if f in form else f.replace(' ', '_')
+            val = form.get(key)
+            # normalize checkboxes (on -> Yes)
+            if val is None:
+                # if not provided, default to 'No' for yes/no fields and empty for others
+                if f in ['Contact DR', 'Smoking', 'Alcohol', 'Cavitary pulmonary', 'Diabetes', 'TBoutside']:
+                    val = 'No'
+                else:
+                    val = ''
+            row[f] = val
+
+        df_in = pd.DataFrame([row])
+        # apply preprocessing used during training
+        try:
+            df_proc = preprocess_pipeline(df_in)
+        except Exception as e:
+            return render_template('predict_result.html', error=f'Preprocessing failed: {e}')
+
+        # load model
+        pretrained_name = request.form.get('pretrained_name') or ''
+        model_path = None
+        if pretrained_name:
+            model_path = resolve_pretrained_fullpath(pretrained_name)
+        else:
+            models = find_pretrained_models()
+            if models:
+                model_path = resolve_pretrained_fullpath(models[0])
+
+        if not model_path:
+            return render_template('predict_result.html', error='No pretrained model selected or found.')
+
+        try:
+            model = load_pretrained_model(model_path)
+            app.logger.info('Using pretrained model for prediction: %s', model_path)
+        except Exception as e:
+            return render_template('predict_result.html', error=f'Failed to load model: {e}')
+
+        # align features to model expectations when possible
+        X_input = df_proc.copy()
+        # drop Class if present
+        if 'Class' in X_input.columns:
+            X_input = X_input.drop(columns=['Class'])
+
+        try:
+            # Prefer a saved feature manifest (written during training) for exact alignment
+            manifest = _load_feature_manifest(model_path)
+            if manifest:
+                expected = list(manifest)
+                # add missing columns with zeros
+                for c in expected:
+                    if c not in X_input.columns:
+                        X_input[c] = 0
+                # ensure ordering
+                X_input = X_input[expected]
+            else:
+                # fall back to model-provided hints
+                if hasattr(model, 'feature_names_in_'):
+                    expected = list(model.feature_names_in_)
+                    for c in expected:
+                        if c not in X_input.columns:
+                            X_input[c] = 0
+                    X_input = X_input[expected]
+                elif hasattr(model, 'n_features_in_'):
+                    n_expected = int(model.n_features_in_)
+                    if X_input.shape[1] < n_expected:
+                        # add dummy zero columns
+                        cur = X_input.shape[1]
+                        for i in range(n_expected - cur):
+                            X_input[f'_pad_{i}'] = 0
+                    elif X_input.shape[1] > n_expected:
+                        # attempt to reduce to n_expected columns (best-effort)
+                        X_input = X_input.iloc[:, :n_expected]
+        except Exception as e:
+            app.logger.exception('Failed to align input features: %s', e)
+
+        # convert to numpy array for prediction
+        try:
+            X_arr = X_input.values
+            pred = model.predict(X_arr)
+            pred_label = int(pred[0]) if hasattr(pred, '__len__') else int(pred)
+        except Exception as e:
+            app.logger.exception('Prediction failed with model %s', model_path)
+            return render_template('predict_result.html', error=f'Failed to run prediction: {e}')
+
+        proba = None
+        try:
+            if hasattr(model, 'predict_proba'):
+                pr = model.predict_proba(X_arr)
+                # try to take probability of positive class
+                if pr.shape[1] == 2:
+                    proba = float(pr[0, 1])
+                else:
+                    proba = float(pr[0, 0])
+        except Exception:
+            proba = None
+
+        from drtb.metrics import convert_binary_category_to_string
+        pred_str = convert_binary_category_to_string([pred_label])[0]
+
+        return render_template('predict_result.html', model_name=os.path.basename(model_path), prediction=pred_label, prediction_str=pred_str, probability=proba, input_row=row)
+    except Exception as e:
+        tb = traceback.format_exc()
+        return render_template('predict_result.html', error=str(e), traceback=tb)
 
 
 if __name__ == '__main__':
