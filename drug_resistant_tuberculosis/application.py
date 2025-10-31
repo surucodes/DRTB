@@ -58,18 +58,70 @@ def find_pretrained_models():
     """Return a sorted list of model filenames available in MODEL_DIR."""
     try:
         entries = []
-        # Only consider files inside the outputs/models directory
-        if os.path.isdir(MODEL_DIR):
-            for f in os.listdir(MODEL_DIR):
-                full = os.path.join(MODEL_DIR, f)
-                if os.path.isfile(full) and f.lower().endswith(('.joblib', '.pkl', '.bin', '.model')):
-                    entries.append(f)
+
+        # Candidate directories to search for pretrained models. Keep MODEL_DIR first
+        # so files in outputs/models are preferred when available.
+        candidate_dirs = [
+            MODEL_DIR,
+            os.path.join(BASE_DIR, 'outputs', 'models'),
+            os.path.join(BASE_DIR, 'models'),
+            os.path.join(BASE_DIR),
+            os.path.join(os.path.dirname(BASE_DIR), 'outputs', 'models'),
+        ]
+
+        # also respect an explicit env var if the deploy environment sets it
+        env_dir = os.environ.get('PRETRAINED_MODELS_DIR')
+        if env_dir:
+            candidate_dirs.insert(0, env_dir)
+
+        seen = set()
+        for d in candidate_dirs:
+            try:
+                if not d or not os.path.isdir(d):
+                    continue
+                for f in os.listdir(d):
+                    full = os.path.join(d, f)
+                    if os.path.isfile(full) and f.lower().endswith(('.joblib', '.pkl', '.bin', '.model')):
+                        if f not in seen:
+                            seen.add(f)
+                            entries.append(f)
+            except Exception:
+                # ignore unreadable dirs
+                continue
 
         # sort deterministically (reverse alphabetical can put newer timestamped names first)
         items = sorted(entries, reverse=True)
+        app.logger.debug('find_pretrained_models looked in: %s and found: %s', candidate_dirs, items)
         return items
     except Exception:
         return []
+
+
+def resolve_pretrained_fullpath(filename: str):
+    """Given a filename (basename), return the full path searching candidate dirs or None."""
+    if not filename:
+        return None
+    candidate_dirs = [
+        MODEL_DIR,
+        os.path.join(BASE_DIR, 'outputs', 'models'),
+        os.path.join(BASE_DIR, 'models'),
+        os.path.join(BASE_DIR),
+        os.path.join(os.path.dirname(BASE_DIR), 'outputs', 'models'),
+    ]
+    env_dir = os.environ.get('PRETRAINED_MODELS_DIR')
+    if env_dir:
+        candidate_dirs.insert(0, env_dir)
+
+    for d in candidate_dirs:
+        try:
+            if not d:
+                continue
+            p = os.path.join(d, filename)
+            if os.path.exists(p) and os.path.isfile(p):
+                return p
+        except Exception:
+            continue
+    return None
 
 
 def load_pretrained_model(path):
@@ -134,18 +186,12 @@ def run():
             # determine pretrained model path: explicit selection or latest in MODEL_DIR
             selected = None
             if pretrained_name:
-                cand = os.path.join(MODEL_DIR, pretrained_name)
-                if os.path.exists(cand):
-                    selected = cand
-                else:
-                    cand2 = os.path.join(BASE_DIR, pretrained_name)
-                    if os.path.exists(cand2):
-                        selected = cand2
+                selected = resolve_pretrained_fullpath(pretrained_name)
             else:
-                # pick latest file from MODEL_DIR
+                # pick latest discovered model from find_pretrained_models()
                 models = find_pretrained_models()
                 if models:
-                    selected = os.path.join(MODEL_DIR, models[0])
+                    selected = resolve_pretrained_fullpath(models[0])
 
             if not selected:
                 return render_template('result.html', error='No pretrained model found. Uncheck "Use pretrained" to run model selection.')
@@ -307,19 +353,14 @@ def run():
             # find existing pretrained model path to compare/overwrite
             existing_model_path = None
             if pretrained_name:
-                candidate = os.path.join(MODEL_DIR, pretrained_name)
-                if os.path.exists(candidate):
-                    existing_model_path = candidate
-                else:
-                    candidate2 = os.path.join(BASE_DIR, pretrained_name)
-                    if os.path.exists(candidate2):
-                        existing_model_path = candidate2
+                existing_model_path = resolve_pretrained_fullpath(pretrained_name)
             else:
                 # try to find a file that matches the best_name in MODEL_DIR
                 try:
-                    for f in os.listdir(MODEL_DIR):
-                        if best_name.lower() in f.lower():
-                            existing_model_path = os.path.join(MODEL_DIR, f)
+                    # search candidate dirs for a filename containing best_name
+                    for cand in find_pretrained_models():
+                        if best_name.lower() in cand.lower():
+                            existing_model_path = resolve_pretrained_fullpath(cand)
                             break
                 except Exception:
                     existing_model_path = None
