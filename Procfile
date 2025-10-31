@@ -1,0 +1,1 @@
+web: gunicorn --bind 0.0.0.0:$PORT drug_resistant_tuberculosis.application:app --workers 1 --threads 4 --timeout 120

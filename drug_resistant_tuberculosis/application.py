@@ -98,6 +98,30 @@ def ensure_feature_manifests():
         _FEATURE_MANIFESTS_INITIALIZED = True
 
 
+# Log runtime versions at startup (helps diagnose Railway env)
+try:
+    import numpy as _np, sklearn as _sk, joblib as _joblib
+    app.logger.info("Runtime versions -> numpy=%s, sklearn=%s, joblib=%s", _np.__version__, _sk.__version__, _joblib.__version__)
+except Exception:
+    pass
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    """Simple health/diagnostic endpoint returning versions and discovered model filenames."""
+    try:
+        import numpy as _np, sklearn as _sk, joblib as _joblib
+        models = find_pretrained_models()
+        return {
+            "numpy": getattr(_np, "__version__", None),
+            "sklearn": getattr(_sk, "__version__", None),
+            "joblib": getattr(_joblib, "__version__", None),
+            "models_found": models,
+        }
+    except Exception as e:
+        return {"error": str(e)}, 500
+
+
 @app.route('/')
 def index():
     """Show upload form and action choices."""

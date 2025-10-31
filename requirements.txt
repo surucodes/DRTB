@@ -1,12 +1,12 @@
-# Minimal, pinned runtime requirements for the Flask/ML app. Adjust as needed for your deployment.
-pandas==1.5.3
-numpy==1.24.3
-matplotlib==3.6.3
-seaborn==0.12.2
-scikit-learn==1.2.2
-imbalanced-learn==0.10.1
-joblib==1.2.0
-streamlit==1.24.1
+# Root runtime requirements for Railway (Nixpacks). Match training env.
+# Note: Exclude Streamlit here to avoid numpy<2 constraints; use a separate dev file if needed.
+pandas==2.0.3
+numpy==2.1.0
+matplotlib==3.8.4
+seaborn==0.13.2
+scikit-learn==1.7.2
+imbalanced-learn==0.12.0
+joblib==1.4.2
 xgboost==1.7.6
 # Pin setuptools to avoid pkg_resources deprecation warnings from gunicorn (use a released 80.x)
 setuptools==80.9.0
