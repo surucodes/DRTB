@@ -126,24 +126,47 @@ def resolve_pretrained_fullpath(filename: str):
 
 def load_pretrained_model(path):
     """Load a pretrained model. Try joblib first, then attempt CatBoost native load as fallback."""
-    import joblib
     from pathlib import Path
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(str(p))
-    # try joblib
+
+    ext = p.suffix.lower()
+    # choose loader based on file extension when possible
     try:
-        return joblib.load(str(p))
-    except Exception:
-        # try CatBoost
-        try:
+        if ext in ('.joblib', '.pkl'):
+            import joblib
+            return joblib.load(str(p))
+
+        if ext in ('.cbm', '.catboost'):
             from catboost import CatBoostClassifier
             m = CatBoostClassifier()
             m.load_model(str(p))
             return m
-        except Exception:
-            # as last resort, raise
+
+        # for other extensions (.model, .bin) try to infer loader by attempting joblib first
+        # but if joblib fails, do NOT automatically try CatBoost unless the extension explicitly
+        # indicates CatBoost; re-raise the joblib error so failures are visible in logs instead
+        try:
+            import joblib
+            return joblib.load(str(p))
+        except Exception as e_job:
+            app.logger.exception('joblib.load failed for %s: %s', str(p), e_job)
+            # if the file looks like a CatBoost binary (heuristic), try CatBoost as a last resort
+            try:
+                head = p.open('rb').read(64)
+                if b'CatBoost' in head or b'catboost' in head:
+                    from catboost import CatBoostClassifier
+                    m = CatBoostClassifier()
+                    m.load_model(str(p))
+                    return m
+            except Exception:
+                pass
+            # otherwise raise the original joblib error
             raise
+    except Exception:
+        app.logger.exception('Failed to load pretrained model: %s', str(p))
+        raise
 
 
 @app.route('/run', methods=['POST'])
