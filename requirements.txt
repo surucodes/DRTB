@@ -1,6 +1,6 @@
 # Root runtime requirements for Railway (Nixpacks). Match training env.
 # Note: Exclude Streamlit here to avoid numpy<2 constraints; use a separate dev file if needed.
-pandas==2.0.3
+pandas==2.2.3
 numpy==2.1.0
 matplotlib==3.8.4
 seaborn==0.13.2
