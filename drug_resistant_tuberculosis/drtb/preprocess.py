@@ -5,7 +5,11 @@ import numpy as np
 import os
 
 from sklearn.model_selection import train_test_split
-from imblearn.over_sampling import SMOTE
+"""
+Note: Import SMOTE lazily inside apply_smote to avoid import-time failures
+when imbalanced-learn is missing or incompatible in environments that use
+only prediction (no resampling needed).
+"""
 
 
 def _encode_yes_no(df: pd.DataFrame, yes_no_columns: list) -> pd.DataFrame:
@@ -45,6 +49,8 @@ def split_X_y(df: pd.DataFrame) -> Tuple[pd.DataFrame, pd.Series]:
 
 
 def apply_smote(X, y, sampling_strategy: str = "minority"):
+    # Lazy import to prevent module import failures during prediction-only flows
+    from imblearn.over_sampling import SMOTE
     smote = SMOTE(sampling_strategy=sampling_strategy)
     X_res, y_res = smote.fit_resample(X, y)
     return X_res, y_res

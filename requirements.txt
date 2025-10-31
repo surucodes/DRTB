@@ -5,7 +5,7 @@ numpy==2.1.0
 matplotlib==3.8.4
 seaborn==0.13.2
 scikit-learn==1.7.2
-imbalanced-learn==0.12.0
+imbalanced-learn==0.12.3
 joblib==1.4.2
 xgboost==1.7.6
 # Pin setuptools to avoid pkg_resources deprecation warnings from gunicorn (use a released 80.x)
